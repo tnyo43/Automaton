@@ -37,14 +37,6 @@ let transition_state (sts: state list) (s:state) (a:alphabet): state =
   match s with S(_, _, lst) -> get_state sts (List.nth lst @@ alphabet_to_index a)
 ;;
 
-let s0 = get_state states "q0";;
-let s1 = transition_state states s0 Zero;;
-let s2 = transition_state states s0 One;;
-
-let w1 = "101" (* 5 *)
-let w2 = "1011" (* 11 a*)
-let w3 = "11" (* 3 *)
-
 (* chrをalphabetに変関する *)
 let chr_to_alphabet c = match c with
   | '0' -> Zero
@@ -60,10 +52,6 @@ let w_to_list (w:string) : alphabet list =
   in
   w_to_list 0 (fun x -> x)
 ;;
-
-let lst1 = w_to_list w1;;
-let lst2 = w_to_list w2;;
-let lst3 = w_to_list w3;;
 
 (* 開始状態からalphabet listを入力したら受理状態になるかどうか *)
 let judge_accept (sts: state list) (lst:alphabet list) : bool =
@@ -108,7 +96,110 @@ let test_check_function n lim : bool =
   test_check_function n lim true
 ;;
 
-
+(*
 (* 10000まで試して見たらとりあえずできてるっぽい *)
 test_check_function 0 10000;;
+*)
 
+type legex =
+  | State of string
+  | Alpha of alphabet
+  | Epsilon (* 長さ0の言語 *)
+  | None (* 空集合 *)
+  | Union of legex list (* 積 *)
+  | Concat of legex list (* 接続 *)
+  | Star of legex (* 0回以上の繰り返し *)
+;;
+
+(* state'はstateに正規表現を追加したもの *)
+type state' = S' of string * bool * string list * legex;;
+
+(* A+B になった時の処理 *)
+let unite_legex l1 l2 =
+  match l1 with
+  | None -> l2
+  | Union lst1 ->
+      begin
+        match l2 with
+        | None -> l1
+        | Union lst2 -> Union (lst1 @ lst2)
+        | x -> Union (x::lst1)
+      end
+  | x -> 
+    begin
+        match l2 with
+        | None -> l1
+        | Union lst2 -> Union (x::lst2)
+        | m -> Union [l1; l2]
+    end
+;;
+
+(* A.B になった時の処理 *)
+let concatinate_legex l1 l2 =
+  match l1 with
+  | Epsilon -> l2
+  | None -> None
+  | Concat x -> 
+      begin
+        match l2 with
+        | Epsilon -> l1
+        | None -> None
+        | Concat y -> Concat (x@y)
+        | y -> Concat (x@[y])
+      end
+  | x ->
+      begin 
+        match l2 with
+        | Epsilon -> l1
+        | None -> None
+        | Concat y -> Concat (x::y)
+        | y -> Concat ([x;y])
+      end
+;;
+
+(* starで繰り返す時の処理 *)
+let closure_legex lex = 
+  match lex with
+  | None -> None
+  | Epsilon -> Epsilon
+  | x -> Star x
+;;
+
+(* FIXME 配列の残りの長さからアルファベットを取得 *)
+let get_alphabet lst =
+  if List.length lst = 1 then Zero
+  else One
+;;
+
+(* statesの中のsという名前のstateの正規表現 *)
+let get_legex (s: string): legex = 
+  (* nameというstateのpathの中にsが含まれていれば追加 *)
+  let rec init_legex (name:string) (path:string list) k : legex =
+    match path with
+    | [] -> k None
+    | h::t ->
+        if h = s then 
+          begin
+            if name="s" then init_legex name t (fun x -> k (unite_legex (Alpha (get_alphabet t)) x))
+            else init_legex name t (fun x -> k (unite_legex (concatinate_legex (State name) (Alpha (get_alphabet t))) x))
+          end
+        else init_legex name t k
+  in
+  let rec get_legex (states: state list): legex = 
+    match states with
+    | [] -> None
+    | h::t ->
+        match h with
+        | S (n, _, path) -> unite_legex (init_legex n path (fun x -> x)) (get_legex t)
+  in get_legex states;;
+;;
+
+(*
+(* ちゃんと表現できているか確認 *)
+get_legex "s";;
+get_legex "q0";;
+get_legex "q1";;
+get_legex "q2";;
+get_legex "q3";;
+get_legex "q4";;
+*)
